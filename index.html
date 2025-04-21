@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bubble Shooter</title>
@@ -236,40 +236,38 @@ function loop() {
         // Check for matches
         let group = findConnectedBubbles(pos.row, pos.col, bubble.color);
         if (group.length >= 3) {
-          score += group.length * 10; // 10 points per bubble
-          for (let b of group) {
-            grid[b.row][b.col] = null;
-          }
+          group.forEach(({ row, col }) => {
+            grid[row][col] = null;
+            score += 10;
+          });
         }
-      }
 
-      // Make orphan bubbles fall
-      let orphans = findOrphanBubbles();
-      for (let orphan of orphans) {
-        grid[orphan.r][orphan.c] = null; // Remove orphan
-        let newRow = orphan.r;
-        while (newRow < gridRows - 1 && !grid[newRow + 1][orphan.c]) {
-          newRow++;
+        // Check for orphan bubbles
+        let orphans = findOrphanBubbles();
+        if (orphans.length > 0) {
+          orphans.forEach(({ r, c }) => {
+            grid[r][c] = null;
+            score += 5;
+          });
         }
-        grid[newRow][orphan.c] = orphan.color;
-      }
 
-      bubble = null;
-      shooting = false;
+        shooting = false;
+        bubble = null;
+      }
     }
   }
 
   if (checkGameOver()) {
-    alert("Game Over! Final Score: " + score);
+    alert("Game Over!");
     resetGame();
   }
 
   requestAnimationFrame(loop);
 }
 
-// Handle input
-canvas.addEventListener('touchstart', e => {
-  let touch = e.touches[0];
+// Touch control
+canvas.addEventListener("touchstart", (e) => {
+  const touch = e.touches[0];
   let angle = Math.atan2(touch.clientY - shooter.y, touch.clientX - shooter.x);
   shooter.angle = angle;
   if (!shooting) {
@@ -284,7 +282,7 @@ canvas.addEventListener('touchstart', e => {
   }
 });
 
-// Initialize
+// Start the game loop
 loop();
 </script>
 </body>

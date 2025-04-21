@@ -1,142 +1,291 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Addie Invaders</title>
+  <title>Bubble Shooter</title>
   <style>
-    * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
-      background: black;
-      color: white;
-      text-align: center;
-      font-family: sans-serif;
+      background: #111;
+      overflow: hidden;
+      touch-action: none;
     }
     canvas {
-      background: #000;
       display: block;
-      margin: 0 auto;
-      border: 2px solid lime;
-    }
-    .controls {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-      margin-top: 10px;
-    }
-    .btn {
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: #444;
-      color: white;
-      border: none;
-      border-radius: 5px;
+      background: #222;
     }
   </style>
 </head>
 <body>
-  <h2>Addie Invaders</h2>
-  <canvas id="game" width="320" height="480"></canvas>
-  <div class="controls">
-    <button class="btn" ontouchstart="left = true" ontouchend="left = false">Left</button>
-    <button class="btn" ontouchstart="shoot = true" ontouchend="shoot = false">Shoot</button>
-    <button class="btn" ontouchstart="right = true" ontouchend="right = false">Right</button>
-  </div>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let width = window.innerWidth;
+let height = window.innerHeight;
+canvas.width = width;
+canvas.height = height;
 
-  <script>
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
+// Constants
+const bubbleRadius = 20;
+const gridRows = 6;
+const gridCols = 8;
+const colors = ['red', 'yellow', 'blue', 'green', 'purple'];
 
-    const player = {
-      x: canvas.width / 2 - 15,
-      y: canvas.height - 30,
-      width: 30,
-      height: 10,
-      speed: 5,
-      bullets: []
-    };
+let grid = [];
+let shooter = {
+  x: width / 2,
+  y: height - 60,
+  angle: Math.PI / 2,
+  color: colors[Math.floor(Math.random() * colors.length)],
+  bubble: null
+};
 
-    const enemies = [];
-    for (let i = 0; i < 6; i++) {
-      enemies.push({ x: i * 50 + 30, y: 30, width: 20, height: 20 });
+// Create initial grid
+for (let r = 0; r < gridRows; r++) {
+  let row = [];
+  for (let c = 0; c < gridCols; c++) {
+    if (Math.random() > 0.3) {
+      row.push(colors[Math.floor(Math.random() * colors.length)]);
+    } else {
+      row.push(null);
     }
+  }
+  grid.push(row);
+}
 
-    let left = false;
-    let right = false;
-    let shoot = false;
+// Variables
+let shooting = false;
+let bubble = null;
+let score = 0;
 
-    function drawPlayer() {
-      ctx.fillStyle = 'lime';
-      ctx.fillRect(player.x, player.y, player.width, player.height);
+// Helper functions
+function getBubbleGridPosition(x, y) {
+  let row = Math.floor(y / (bubbleRadius * 2));
+  let col = Math.floor((x - (row % 2) * bubbleRadius) / (bubbleRadius * 2));
+  return { row, col };
+}
+
+function findConnectedBubbles(row, col, color, visited = {}) {
+  let key = `${row},${col}`;
+  if (visited[key] || grid[row]?.[col] !== color) return [];
+
+  visited[key] = true;
+  let group = [{ row, col }];
+  let neighbors = getNeighbors(row, col);
+
+  for (let { r, c } of neighbors) {
+    group = group.concat(findConnectedBubbles(r, c, color, visited));
+  }
+  return group;
+}
+
+function getNeighbors(row, col) {
+  const evenRowOffsets = [
+    { dr: -1, dc: 0 }, { dr: -1, dc: 1 },
+    { dr: 0, dc: -1 }, { dr: 0, dc: 1 },
+    { dr: 1, dc: 0 }, { dr: 1, dc: 1 }
+  ];
+  const oddRowOffsets = [
+    { dr: -1, dc: -1 }, { dr: -1, dc: 0 },
+    { dr: 0, dc: -1 }, { dr: 0, dc: 1 },
+    { dr: 1, dc: -1 }, { dr: 1, dc: 0 }
+  ];
+  const offsets = row % 2 === 0 ? evenRowOffsets : oddRowOffsets;
+
+  return offsets.map(({ dr, dc }) => {
+    return { r: row + dr, c: col + dc };
+  }).filter(({ r, c }) =>
+    r >= 0 && r < gridRows && c >= 0 && c < gridCols
+  );
+}
+
+function findOrphanBubbles() {
+  let visited = {};
+  let connectedToTop = [];
+
+  // Find all bubbles connected to the top row
+  for (let col = 0; col < gridCols; col++) {
+    if (grid[0][col]) {
+      connectedToTop = connectedToTop.concat(findConnectedBubbles(0, col, grid[0][col], visited));
     }
+  }
 
-    function drawEnemies() {
-      ctx.fillStyle = 'red';
-      enemies.forEach(enemy => {
-        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-      });
-    }
-
-    function drawBullets() {
-      ctx.fillStyle = 'yellow';
-      player.bullets.forEach(bullet => {
-        ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
-      });
-    }
-
-    function update() {
-      if (left) player.x -= player.speed;
-      if (right) player.x += player.speed;
-
-      if (shoot && player.bullets.length < 1) {
-        player.bullets.push({
-          x: player.x + player.width / 2 - 2,
-          y: player.y,
-          width: 4,
-          height: 10,
-          speed: 6
-        });
+  // All unvisited bubbles are orphans (disconnected)
+  let orphans = [];
+  for (let r = 0; r < gridRows; r++) {
+    for (let c = 0; c < gridCols; c++) {
+      if (grid[r][c] && !visited[`${r},${c}`]) {
+        orphans.push({ r, c });
       }
+    }
+  }
+  return orphans;
+}
 
-      player.bullets.forEach((bullet, index) => {
-        bullet.y -= bullet.speed;
-        if (bullet.y < 0) player.bullets.splice(index, 1);
-      });
+function checkGameOver() {
+  for (let c = 0; c < gridCols; c++) {
+    if (grid[0][c]) {
+      return true; // Game over if any bubble is in the top row
+    }
+  }
+  return false;
+}
 
-      player.bullets.forEach((bullet, bIndex) => {
-        enemies.forEach((enemy, eIndex) => {
-          if (
-            bullet.x < enemy.x + enemy.width &&
-            bullet.x + bullet.width > enemy.x &&
-            bullet.y < enemy.y + enemy.height &&
-            bullet.y + bullet.height > enemy.y
-          ) {
-            enemies.splice(eIndex, 1);
-            player.bullets.splice(bIndex, 1);
+function resetGame() {
+  grid = [];
+  score = 0;
+  for (let r = 0; r < gridRows; r++) {
+    let row = [];
+    for (let c = 0; c < gridCols; c++) {
+      if (Math.random() > 0.3) {
+        row.push(colors[Math.floor(Math.random() * colors.length)]);
+      } else {
+        row.push(null);
+      }
+    }
+    grid.push(row);
+  }
+}
+
+// Draw functions
+function drawBubble(x, y, color) {
+  ctx.beginPath();
+  ctx.arc(x, y, bubbleRadius, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "#000";
+  ctx.stroke();
+}
+
+function drawGrid() {
+  for (let r = 0; r < gridRows; r++) {
+    for (let c = 0; c < gridCols; c++) {
+      let color = grid[r][c];
+      if (color) {
+        let offsetX = (r % 2) * bubbleRadius;
+        let x = c * bubbleRadius * 2 + bubbleRadius + offsetX;
+        let y = r * bubbleRadius * 2 + bubbleRadius;
+        drawBubble(x, y, color);
+      }
+    }
+  }
+}
+
+function drawShooter() {
+  // Aim line
+  ctx.beginPath();
+  ctx.moveTo(shooter.x, shooter.y);
+  ctx.lineTo(shooter.x + Math.cos(shooter.angle) * 40, shooter.y + Math.sin(shooter.angle) * 40);
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+
+  // Next bubble
+  drawBubble(shooter.x, shooter.y, shooter.color);
+}
+
+function drawScore() {
+  ctx.font = "30px Arial";
+  ctx.fillStyle = "#fff";
+  ctx.fillText("Score: " + score, 20, 40);
+}
+
+// Game loop
+function loop() {
+  ctx.clearRect(0, 0, width, height);
+  drawGrid();
+  drawShooter();
+  drawScore();
+
+  if (shooting && bubble) {
+    bubble.x += bubble.vx;
+    bubble.y += bubble.vy;
+
+    // Bounce off walls
+    if (bubble.x < bubbleRadius || bubble.x > width - bubbleRadius) {
+      bubble.vx *= -1;
+    }
+
+    drawBubble(bubble.x, bubble.y, bubble.color);
+
+    // Check collision
+    let collided = false;
+    for (let r = 0; r < gridRows; r++) {
+      for (let c = 0; c < gridCols; c++) {
+        let color = grid[r][c];
+        if (!color) continue;
+        let offsetX = (r % 2) * bubbleRadius;
+        let gx = c * bubbleRadius * 2 + bubbleRadius + offsetX;
+        let gy = r * bubbleRadius * 2 + bubbleRadius;
+        let dx = gx - bubble.x;
+        let dy = gy - bubble.y;
+        let dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < bubbleRadius * 2 - 2) {
+          collided = true;
+          break;
+        }
+      }
+      if (collided) break;
+    }
+
+    if (collided || bubble.y < bubbleRadius) {
+      let pos = getBubbleGridPosition(bubble.x, bubble.y);
+      if (pos.row >= 0 && pos.row < gridRows && pos.col >= 0 && pos.col < gridCols) {
+        grid[pos.row][pos.col] = bubble.color;
+
+        // Check for matches
+        let group = findConnectedBubbles(pos.row, pos.col, bubble.color);
+        if (group.length >= 3) {
+          score += group.length * 10; // 10 points per bubble
+          for (let b of group) {
+            grid[b.row][b.col] = null;
           }
-        });
-      });
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawPlayer();
-      drawEnemies();
-      drawBullets();
-    }
-
-    function gameLoop() {
-      update();
-      draw();
-      if (enemies.length === 0) {
-        alert('You win!');
-        return;
+        }
       }
-      requestAnimationFrame(gameLoop);
-    }
 
-    gameLoop();
-  </script>
+      // Make orphan bubbles fall
+      let orphans = findOrphanBubbles();
+      for (let orphan of orphans) {
+        grid[orphan.r][orphan.c] = null; // Remove orphan
+        let newRow = orphan.r;
+        while (newRow < gridRows - 1 && !grid[newRow + 1][orphan.c]) {
+          newRow++;
+        }
+        grid[newRow][orphan.c] = orphan.color;
+      }
+
+      bubble = null;
+      shooting = false;
+    }
+  }
+
+  if (checkGameOver()) {
+    alert("Game Over! Final Score: " + score);
+    resetGame();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// Handle input
+canvas.addEventListener('touchstart', e => {
+  let touch = e.touches[0];
+  let angle = Math.atan2(touch.clientY - shooter.y, touch.clientX - shooter.x);
+  shooter.angle = angle;
+  if (!shooting) {
+    bubble = {
+      x: shooter.x,
+      y: shooter.y,
+      color: shooter.color,
+      vx: Math.cos(shooter.angle) * 6,
+      vy: Math.sin(shooter.angle) * 6
+    };
+    shooting = true;
+  }
+});
+
+// Initialize
+loop();
+</script>
 </body>
 </html>

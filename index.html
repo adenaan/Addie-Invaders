@@ -230,6 +230,8 @@ function loop() {
 
 // Touch control
 canvas.addEventListener("touchstart", (e) => {
+  if (gameOver) return;  // Do not allow shooting if the game is over
+
   const touch = e.touches[0];
   let angle = Math.atan2(touch.clientY - shooter.y, touch.clientX - shooter.x);
   shooter.angle = angle;

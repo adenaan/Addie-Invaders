@@ -1,134 +1,45 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bubble Shooter</title>
   <style>
-    html, body {
-      margin: 0;
-      background: #111;
-      overflow: hidden;
-      touch-action: none;
-    }
-    canvas {
-      display: block;
-      background: #222;
-    }
+    body, html { margin: 0; padding: 0; background: #111; overflow: hidden; }
+    canvas { display: block; margin: 0 auto; background: #222; }
   </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-let width = window.innerWidth;
-let height = window.innerHeight;
-canvas.width = width;
-canvas.height = height;
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-// Constants
-const bubbleRadius = 20;
-const gridRows = 6;
-const gridCols = 8;
-const colors = ['red', 'yellow', 'blue', 'green', 'purple'];
-
+const BUBBLE_RADIUS = 20;
+const ROWS = 6;
+const COLS = 8;
+const COLORS = ["red", "yellow", "blue", "green"];
 let grid = [];
-let shooter = {
-  x: width / 2,
-  y: height - 60,
-  angle: Math.PI / 2,
-  color: colors[Math.floor(Math.random() * colors.length)],
-  bubble: null
-};
+let shooting = false;
+let activeBubble = null;
+let gameStarted = false;
+let gameOver = false;
 
-// Create initial grid with random bubbles
-function initializeGrid() {
+function initGrid() {
   grid = [];
-  for (let r = 0; r < gridRows; r++) {
+  for (let r = 0; r < ROWS; r++) {
     let row = [];
-    for (let c = 0; c < gridCols; c++) {
-      row.push(Math.random() < 0.3 ? colors[Math.floor(Math.random() * colors.length)] : null); // 30% chance to have a bubble
+    for (let c = 0; c < COLS; c++) {
+      row.push(Math.random() < 0.4 ? COLORS[Math.floor(Math.random() * COLORS.length)] : null);
     }
     grid.push(row);
   }
 }
 
-// Variables
-let shooting = false;
-let bubble = null;
-let score = 0;
-let gameOver = false;
-
-// Helper functions
-function getBubbleGridPosition(x, y) {
-  let row = Math.floor(y / (bubbleRadius * 2));
-  let col = Math.floor((x - (row % 2) * bubbleRadius) / (bubbleRadius * 2));
-  return { row, col };
-}
-
-function findConnectedBubbles(row, col, color, visited = {}) {
-  let key = `${row},${col}`;
-  if (visited[key] || grid[row]?.[col] !== color) return [];
-
-  visited[key] = true;
-  let group = [{ row, col }];
-  let neighbors = getNeighbors(row, col);
-
-  for (let { r, c } of neighbors) {
-    group = group.concat(findConnectedBubbles(r, c, color, visited));
-  }
-  return group;
-}
-
-function getNeighbors(row, col) {
-  const evenRowOffsets = [
-    { dr: -1, dc: 0 }, { dr: -1, dc: 1 },
-    { dr: 0, dc: -1 }, { dr: 0, dc: 1 },
-    { dr: 1, dc: 0 }, { dr: 1, dc: 1 }
-  ];
-  const oddRowOffsets = [
-    { dr: -1, dc: -1 }, { dr: -1, dc: 0 },
-    { dr: 0, dc: -1 }, { dr: 0, dc: 1 },
-    { dr: 1, dc: -1 }, { dr: 1, dc: 0 }
-  ];
-  const offsets = row % 2 === 0 ? evenRowOffsets : oddRowOffsets;
-
-  return offsets.map(({ dr, dc }) => {
-    return { r: row + dr, c: col + dc };
-  }).filter(({ r, c }) =>
-    r >= 0 && r < gridRows && c >= 0 && c < gridCols
-  );
-}
-
-function clearMatchedBubbles(row, col, color) {
-  let connectedBubbles = findConnectedBubbles(row, col, color);
-  if (connectedBubbles.length >= 3) {
-    connectedBubbles.forEach(({ row, col }) => {
-      grid[row][col] = null;
-      score += 10;  // Score for clearing bubbles
-    });
-  }
-}
-
-function checkGameOver() {
-  for (let c = 0; c < gridCols; c++) {
-    if (grid[0][c]) {
-      return true; // Game over if any bubble is in the top row
-    }
-  }
-  return false;
-}
-
-function resetGame() {
-  initializeGrid();
-  score = 0;
-  gameOver = false;
-}
-
-// Draw functions
 function drawBubble(x, y, color) {
   ctx.beginPath();
-  ctx.arc(x, y, bubbleRadius, 0, Math.PI * 2);
+  ctx.arc(x, y, BUBBLE_RADIUS, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
   ctx.strokeStyle = "#000";
@@ -136,119 +47,85 @@ function drawBubble(x, y, color) {
 }
 
 function drawGrid() {
-  for (let r = 0; r < gridRows; r++) {
-    for (let c = 0; c < gridCols; c++) {
-      let color = grid[r][c];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const color = grid[r][c];
       if (color) {
-        let offsetX = (r % 2) * bubbleRadius;
-        let x = c * bubbleRadius * 2 + bubbleRadius + offsetX;
-        let y = r * bubbleRadius * 2 + bubbleRadius;
+        let offsetX = (r % 2) * BUBBLE_RADIUS;
+        let x = c * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS + offsetX;
+        let y = r * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS;
         drawBubble(x, y, color);
       }
     }
   }
 }
 
-function drawShooter() {
-  // Aim line
-  ctx.beginPath();
-  ctx.moveTo(shooter.x, shooter.y);
-  ctx.lineTo(shooter.x + Math.cos(shooter.angle) * 40, shooter.y + Math.sin(shooter.angle) * 40);
-  ctx.strokeStyle = "#fff";
-  ctx.stroke();
-
-  // Next bubble
-  drawBubble(shooter.x, shooter.y, shooter.color);
+function checkGameOver() {
+  if (!gameStarted) return false;
+  for (let c = 0; c < COLS; c++) {
+    if (grid[0][c]) return true;
+  }
+  return false;
 }
 
-function drawScore() {
-  ctx.font = "30px Arial";
-  ctx.fillStyle = "#fff";
-  ctx.fillText("Score: " + score, 20, 40);
+function resetGame() {
+  initGrid();
+  gameStarted = false;
+  gameOver = false;
 }
 
-// Game loop
 function loop() {
-  ctx.clearRect(0, 0, width, height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawGrid();
-  drawShooter();
-  drawScore();
 
-  if (shooting && bubble) {
-    bubble.x += bubble.vx;
-    bubble.y += bubble.vy;
+  if (activeBubble) {
+    activeBubble.x += activeBubble.vx;
+    activeBubble.y += activeBubble.vy;
 
-    // Bounce off walls
-    if (bubble.x < bubbleRadius || bubble.x > width - bubbleRadius) {
-      bubble.vx *= -1;
+    if (activeBubble.x < BUBBLE_RADIUS || activeBubble.x > canvas.width - BUBBLE_RADIUS) {
+      activeBubble.vx *= -1;
     }
 
-    drawBubble(bubble.x, bubble.y, bubble.color);
+    drawBubble(activeBubble.x, activeBubble.y, activeBubble.color);
 
-    // Check collision with other bubbles
-    let collided = false;
-    for (let r = 0; r < gridRows; r++) {
-      for (let c = 0; c < gridCols; c++) {
-        let color = grid[r][c];
-        if (!color) continue;
-        let offsetX = (r % 2) * bubbleRadius;
-        let gx = c * bubbleRadius * 2 + bubbleRadius + offsetX;
-        let gy = r * bubbleRadius * 2 + bubbleRadius;
-        let dx = gx - bubble.x;
-        let dy = gy - bubble.y;
-        let dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < bubbleRadius * 2 - 2) {
-          collided = true;
-          break;
-        }
+    if (activeBubble.y < BUBBLE_RADIUS * 2) {
+      const row = 0;
+      const col = Math.floor((activeBubble.x - (row % 2) * BUBBLE_RADIUS) / (BUBBLE_RADIUS * 2));
+      if (grid[row] && col >= 0 && col < COLS) {
+        grid[row][col] = activeBubble.color;
       }
-      if (collided) break;
-    }
-
-    if (collided || bubble.y < bubbleRadius) {
-      let pos = getBubbleGridPosition(bubble.x, bubble.y);
-      if (pos.row >= 0 && pos.row < gridRows && pos.col >= 0 && pos.col < gridCols) {
-        grid[pos.row][pos.col] = bubble.color;
-
-        // Clear any matching bubbles
-        clearMatchedBubbles(pos.row, pos.col, bubble.color);
-
-        shooting = false;
-        bubble = null;
-      }
+      activeBubble = null;
+      shooting = false;
+      gameStarted = true;
     }
   }
 
-  if (checkGameOver() && !gameOver) {
+  if (!gameOver && checkGameOver()) {
     gameOver = true;
-    alert("Game Over!");
-    resetGame();
+    setTimeout(() => {
+      alert("Game Over!");
+      resetGame();
+    }, 100);
   }
 
   requestAnimationFrame(loop);
 }
 
-// Touch control
-canvas.addEventListener("touchstart", (e) => {
-  if (gameOver) return;  // Do not allow shooting if the game is over
-
+canvas.addEventListener("touchstart", e => {
+  if (shooting || gameOver) return;
   const touch = e.touches[0];
-  let angle = Math.atan2(touch.clientY - shooter.y, touch.clientX - shooter.x);
-  shooter.angle = angle;
-  if (!shooting) {
-    bubble = {
-      x: shooter.x,
-      y: shooter.y,
-      color: shooter.color,
-      vx: Math.cos(shooter.angle) * 6,
-      vy: Math.sin(shooter.angle) * 6
-    };
-    shooting = true;
-  }
+  const angle = Math.atan2(touch.clientY - (canvas.height - 50), touch.clientX - (canvas.width / 2));
+  activeBubble = {
+    x: canvas.width / 2,
+    y: canvas.height - 50,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    vx: Math.cos(angle) * 5,
+    vy: Math.sin(angle) * 5
+  };
+  shooting = true;
 });
 
-// Start the game loop
-initializeGrid();
+resetGame();
 loop();
 </script>
 </body>
